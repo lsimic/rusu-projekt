@@ -1,0 +1,6 @@
+.venv
+.vscode
+__pycache__
+render
+trained_outputs.csv
+checkpoints_v4_copy
