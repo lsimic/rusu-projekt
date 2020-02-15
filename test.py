@@ -17,65 +17,79 @@ import matplotlib.pyplot
 import csv
 import os
 
-from environment_v4 import EnvironmentV4
+from environment_test import TestEnvironment
 
 
-CHECKPOINT_DIR = "checkpoints_v4"
+CHECKPOINT_DIR = "checkpoints"
 CHECKPOINT_PREFIX = os.path.join(CHECKPOINT_DIR, "ckpt")
 
 
 # hyperparameters
-num_iterations = 5001
-collect_episodes_per_iteration = 5
-replay_buffer_capacity = 10000
 learning_rate = 1e-3
-log_interval = 50
-num_eval_episodes = 10
-eval_interval = 100
 fc_layer_params = (32,32)
-checkpoint_interval = 1000
 
 # environments
-eval_py_env = EnvironmentV4()
+eval_py_env = TestEnvironment()
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
 # agent
-actor_net = actor_distribution_network.ActorDistributionNetwork(
+q_net = q_network.QNetwork(
     eval_env.observation_spec(),
     eval_env.action_spec(),
     fc_layer_params=fc_layer_params
 )
 optimizer = tensorflow.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
+
 # try to load and overide from the checkpoint...
-checkpoint = tensorflow.train.Checkpoint(actor_net=actor_net, optimizer=optimizer)
+checkpoint = tensorflow.train.Checkpoint(q_net=q_net, optimizer=optimizer)
 status = checkpoint.restore(tensorflow.train.latest_checkpoint(CHECKPOINT_DIR))
 print(status)
+
 train_step_counter = tensorflow.compat.v2.Variable(0)
-agent = reinforce_agent.ReinforceAgent(
+agent = dqn_agent.DqnAgent(
     eval_env.time_step_spec(),
     eval_env.action_spec(),
-    actor_network=actor_net,
+    q_network=q_net,
     optimizer=optimizer,
-    normalize_returns=True,
-    train_step_counter=train_step_counter)
+    td_errors_loss_fn=common.element_wise_squared_loss,
+    train_step_counter=train_step_counter
+)
 agent.initialize()
 
-
-# dunno why this doesnt work...
 print("testing------")
 result = []
-time_step = eval_py_env.reset()
-result.append(time_step.observation)
-# print(time_step.is_last())
+time_step = eval_env.reset()
+result.append(time_step.observation[0].numpy())
+
 while not time_step.is_last():
     action_step = agent.policy.action(time_step)
-    time_step = eval_py_env.step(action_step.action)
-    # print(time_step.is_last())
-    result.append(time_step.observation)
+    time_step = eval_env.step(action_step.action)
+    result.append(time_step.observation[0].numpy())
+
 with open("trained_outputs.csv","w", newline='') as outfile:
     csv_out=csv.writer(outfile)
     for row in result:
         csv_out.writerow(row)
-matplotlib.pyplot.plot([ele[4] for ele in result], [ele[5] for ele in result])
-matplotlib.pyplot.scatter([ele[0] for ele in result], [ele[1] for ele in result], c="green")
+
+targets = []
+counter=1
+for i in range(0, len(result)-1):
+    if not result[i][0] == result[i+1][0]:
+        targets.append((result[i][0], result[i][1], counter))
+        counter += 1
+targets.append((result[i][0], result[i][1], counter))
+
+print(len(targets))
+
+matplotlib.pyplot.plot([ele[2] for ele in result], [ele[3] for ele in result])
+matplotlib.pyplot.scatter([result[0][2]], [result[0][3]], color="g")
+fig = matplotlib.pyplot.gcf()
+ax = fig.gca()
+for item in targets:
+    circle = matplotlib.pyplot.Circle((item[0], item[1]), 0.1, color="g", fill=False)
+    ax.add_artist(circle)
+    matplotlib.pyplot.text(item[0], item[1], str(item[2]), color="g", fontsize=12)
+
+matplotlib.pyplot.ylim(bottom=-1.0, top=1.0)
+matplotlib.pyplot.xlim(left=-1.0, right=1.0)
 matplotlib.pyplot.show()
