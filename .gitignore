@@ -1,8 +1,7 @@
 .venv
 .vscode
 __pycache__
-/render/output*
-/render/trained_outputs.csv
-/render/*.blend1
-/trained_outputs.csv
-/checkpoints_v4_copy
+/source/render/output*
+/source/render/trained_outputs.csv
+/source/render/*.blend1
+/source/trained_outputs.csv
