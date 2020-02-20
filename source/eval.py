@@ -11,20 +11,23 @@ import matplotlib.pyplot
 import numpy
 import os
 import csv
+import statistics
 
 from environment_test import TestEnvironment
 
 
-CHECKPOINT_DIR = "checkpoints_25k"
+CHECKPOINT_DIR = "checkpoints_5k"
 CHECKPOINT_PREFIX = os.path.join(CHECKPOINT_DIR, "ckpt")
 
 
 # hyperparameters
 learning_rate = 1e-3
 fc_layer_params = (32,32)
+target_count = 1
 
 # environments
 eval_py_env = TestEnvironment()
+eval_py_env.max_target_count = target_count
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
 # agent
@@ -51,40 +54,31 @@ agent = dqn_agent.DqnAgent(
 )
 agent.initialize()
 
-print("testing------")
-result = []
-time_step = eval_env.reset()
-result.append(time_step.observation[0].numpy())
-
-while not time_step.is_last():
-    action_step = agent.policy.action(time_step)
-    time_step = eval_env.step(action_step.action)
+success_count = 0
+resulting_times = []
+for i in range(0, 100):
+    result = []
+    time_step = eval_env.reset()
     result.append(time_step.observation[0].numpy())
 
-with open("trained_outputs.csv","w", newline='') as outfile:
-    csv_out=csv.writer(outfile)
-    for row in result:
-        csv_out.writerow(row)
+    while not time_step.is_last():
+        action_step = agent.policy.action(time_step)
+        time_step = eval_env.step(action_step.action)
+        result.append(time_step.observation[0].numpy())
 
-targets = []
-counter=1
-for i in range(0, len(result)-1):
-    if not result[i][0] == result[i+1][0]:
-        targets.append((result[i][0], result[i][1], counter))
-        counter += 1
-targets.append((result[i][0], result[i][1], counter))
+    targets = []
+    counter=1
+    for i in range(0, len(result)-1):
+        if not result[i][0] == result[i+1][0]:
+            targets.append((result[i][0], result[i][1], counter))
+            counter += 1
+    targets.append((result[i][0], result[i][1], counter))
 
-print(len(targets))
+    if len(targets) >= target_count:
+        success_count += 1
+        resulting_times.append(len(result)*eval_py_env.time_step)
 
-matplotlib.pyplot.plot([ele[2] for ele in result], [ele[3] for ele in result])
-matplotlib.pyplot.scatter([result[0][2]], [result[0][3]], color="g")
-fig = matplotlib.pyplot.gcf()
-ax = fig.gca()
-for item in targets:
-    circle = matplotlib.pyplot.Circle((item[0], item[1]), 0.1, color="g", fill=False)
-    ax.add_artist(circle)
-    matplotlib.pyplot.text(item[0], item[1], str(item[2]), color="g", fontsize=12)
-
-matplotlib.pyplot.ylim(bottom=-1.0, top=1.0)
-matplotlib.pyplot.xlim(left=-1.0, right=1.0)
-matplotlib.pyplot.show()
+print("success: {0}".format(success_count))
+if success_count > 2:
+    print("average: {0}".format(statistics.mean(resulting_times)))
+    print("stdev: {0}".format(statistics.stdev(resulting_times)))
